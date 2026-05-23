@@ -122,16 +122,19 @@ src-tauri/
 - **数据持久化**：JSON 文件存储，localStorage 兜底
 - **测试**：Vitest，覆盖计时器、统计、Todolist、持久化核心逻辑
 
-## 安装与首次运行
+## 下载安装
 
-应用未经过 Apple 开发者证书签名，macOS Gatekeeper 会阻止直接打开。下载后请在终端执行以下命令解除隔离：
+[![GitHub Release](https://img.shields.io/badge/Download-v1.1.0-blue)](https://github.com/Yukon594/stickers-pomodoro/releases/latest)
+
+从 [Releases](https://github.com/Yukon594/stickers-pomodoro/releases) 页面下载最新的 `.dmg` 文件，将 `贴纸番茄钟.app` 拖入 `应用程序` 文件夹。
+
+应用未经过 Apple 开发者证书签名，首次打开前需在终端执行以下命令解除隔离：
 
 ```bash
-# 解除隔离（将路径替换为实际的 .app 位置）
 xattr -d com.apple.quarantine /Applications/贴纸番茄钟.app
 ```
 
-之后即可正常双击打开，后续启动不会再被拦截。
+之后即可正常双击打开，后续启动不会再被拦截。仅支持 macOS (Apple Silicon)。
 
 ## 开发运行
 
