@@ -63,7 +63,7 @@
 ### 森林统计
 
 <p align="center">
-  <img src="%E5%9B%BE%E7%89%87/%E7%BB%9F%E8%AE%A1.png" alt="统计面板" width="600" />
+  <img src="%E5%9B%BE%E7%89%87/%E7%BB%9F%E8%AE%A1%E6%9D%BF%E5%9D%97.png" alt="统计面板" width="600" />
 </p>
 
 - **12 周热力图**：类似 GitHub 贡献图的专注热力图
