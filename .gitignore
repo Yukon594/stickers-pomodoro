@@ -7,3 +7,4 @@ dist-ssr/
 .env.*
 target/
 src-tauri/target/
+src.zip

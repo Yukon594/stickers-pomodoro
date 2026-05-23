@@ -105,6 +105,7 @@ function PomodoroApp() {
   const [statsOpen, setStatsOpen] = useState(false);
   const [todayOpen, setTodayOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [currentDateKey, setCurrentDateKey] = useState(() => todayKey());
 
   const lastFeedbackRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -193,6 +194,22 @@ function PomodoroApp() {
     return () => media.removeEventListener("change", update);
   }, []);
 
+  // Detect day change so the tray icon resets tree count at midnight
+  useEffect(() => {
+    const check = () => {
+      const key = todayKey();
+      setCurrentDateKey((prev) => (prev !== key ? key : prev));
+    };
+    const id = setInterval(check, 30_000);
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+    };
+  }, []);
+
   useEffect(() => {
     if (!isTauriRuntime()) return;
     let cleanup: Array<() => void> = [];
@@ -264,7 +281,7 @@ function PomodoroApp() {
         updateTrayState(trayState.title, trayState.tooltip, [], true).catch(() => undefined);
       });
     return () => { disposed = true; retryTimers.forEach((id) => window.clearTimeout(id)); };
-  }, [settings.forestStats, settings.menuBar.enabled, settings.menuBar.treeStyle, settings.timer.focusMinutes, settings.timer.restMinutes, focusOverride, timer.phase, timer.countdownRole, timer.secondsLeft, timer.isComplete]);
+  }, [settings.forestStats, settings.menuBar.enabled, settings.menuBar.treeStyle, settings.timer.focusMinutes, settings.timer.restMinutes, focusOverride, timer.phase, timer.countdownRole, timer.secondsLeft, timer.isComplete, currentDateKey]);
 
   useEffect(() => {
     const handleShortcut = () => startPomodoroShortcut();
