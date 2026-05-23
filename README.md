@@ -122,6 +122,17 @@ src-tauri/
 - **数据持久化**：JSON 文件存储，localStorage 兜底
 - **测试**：Vitest，覆盖计时器、统计、Todolist、持久化核心逻辑
 
+## 安装与首次运行
+
+应用未经过 Apple 开发者证书签名，macOS Gatekeeper 会阻止直接打开。下载后请在终端执行以下命令解除隔离：
+
+```bash
+# 解除隔离（将路径替换为实际的 .app 位置）
+xattr -d com.apple.quarantine /Applications/贴纸番茄钟.app
+```
+
+之后即可正常双击打开，后续启动不会再被拦截。
+
 ## 开发运行
 
 ```bash
