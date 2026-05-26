@@ -158,6 +158,14 @@ npm test
 npm run tauri build
 ```
 
+## 版本管理
+
+- 唯一正式源码仓库：`/Users/liuyuhang/Cursor/贴纸番茄钟-1.0-improved`
+- Git 新手说明：[`docs/version-management.md`](docs/version-management.md)
+- 旧目录归档状态：[`docs/archive-status.md`](docs/archive-status.md)
+
+以后不要再通过复制新文件夹来表示新版本。目录保持不变，版本请使用 Git 提交、标签（tag）和 GitHub Release 来管理。
+
 ## 配置参数
 
 | 设置项 | 默认值 | 说明 |

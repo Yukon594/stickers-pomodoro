@@ -2,9 +2,13 @@ node_modules/
 dist/
 dist-ssr/
 .DS_Store
+.vercel/
 *.local
 .env
 .env.*
 target/
 src-tauri/target/
 src.zip
+*.dmg
+*.app
+coverage/
