@@ -24,10 +24,10 @@ import { extractBackgroundPalette } from "./lib/palette";
 import {
   PROJECT_COLORS, DEFAULT_REMINDER_COPY, REMINDER_SOUND_OPTIONS,
   defaultSettings, displayAvatarSrc, isTauriRuntime,
-  minimizeMainWindow, playReminderSound, registerStartShortcut,
-  saveSettings, showReminderWindow, startMainWindowDrag,
-  tickFeedback, updateTrayState
-} from "./lib/storage";
+    minimizeMainWindow, playReminderSound, registerStartShortcut,
+    showReminderWindow, startMainWindowDrag,
+    tickFeedback, updateTrayState
+  } from "./lib/storage";
 import {
   addDailyForestProgress, buildHeatmapWeeks, formatDuration,
   moveDailyForestProjectProgress, summarizeProjectRange, todayKey,
@@ -126,7 +126,7 @@ function PomodoroApp() {
       forestStats: trackForest
         ? addDailyForestProgress(settingsRef.current.forestStats, focusSeconds, trackedTrees, new Date(), settingsRef.current.activeProjectId)
         : undefined
-    });
+    }, "throttled");
   };
 
   // --- Timer hook ---
@@ -227,11 +227,6 @@ function PomodoroApp() {
   }, []);
 
   useEffect(() => {
-    if (!settingsLoaded) return;
-    saveSettings(settings).catch((error) => console.warn("Could not save settings", error));
-  }, [settings, settingsLoaded]);
-
-  useEffect(() => {
     if (!settingsLoaded || !isTauriRuntime()) return;
     let disposed = false;
     const shortcut = settings.timer.startShortcut.trim();
@@ -281,7 +276,7 @@ function PomodoroApp() {
         updateTrayState(trayState.title, trayState.tooltip, [], true).catch(() => undefined);
       });
     return () => { disposed = true; retryTimers.forEach((id) => window.clearTimeout(id)); };
-  }, [settings.forestStats, settings.menuBar.enabled, settings.menuBar.treeStyle, settings.timer.focusMinutes, settings.timer.restMinutes, focusOverride, timer.phase, timer.countdownRole, timer.secondsLeft, timer.isComplete, currentDateKey]);
+  }, [settings.forestStats, settings.menuBar.enabled, settings.menuBar.treeStyle, settings.timer.focusMinutes, settings.timer.restMinutes, focusOverride, timer.phase, timer.countdownRole, timer.isRunning, timer.secondsLeft, timer.isComplete, currentDateKey]);
 
   useEffect(() => {
     const handleShortcut = () => startPomodoroShortcut();

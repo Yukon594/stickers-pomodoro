@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSyncedRef } from "./useSyncedRef";
 import { defaultSettings, displayAvatarSrc, loadSettings, saveSettings } from "../lib/storage";
+import { createPersistScheduler } from "../lib/persistScheduler";
 import type { AppSettings } from "../lib/types";
 
 export type AppSettingsPatch = {
@@ -19,10 +20,18 @@ export type AppSettingsPatch = {
   forestStats?: AppSettings["forestStats"];
 };
 
+type PersistMode = "immediate" | "throttled";
+
+const TIMER_PERSIST_INTERVAL_MS = 4_000;
+
 export function useSettings() {
   const [settings, setSettings, settingsRef] = useSyncedRef<AppSettings>(defaultSettings);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const settingsLoadedRef = useRef(false);
+  const persistModeRef = useRef<PersistMode>("immediate");
+  const persistSchedulerRef = useRef(
+    createPersistScheduler<AppSettings>((nextSettings) => saveSettings(nextSettings), TIMER_PERSIST_INTERVAL_MS)
+  );
 
   useEffect(() => {
     loadSettings().then((loaded) => {
@@ -36,12 +45,24 @@ export function useSettings() {
     if (!settingsLoadedRef.current) {
       return;
     }
+
+    if (persistModeRef.current === "throttled") {
+      persistSchedulerRef.current.schedule(settings).catch((error) => console.warn("Could not save settings", error));
+      return;
+    }
+
+    persistSchedulerRef.current.cancel();
     saveSettings(settings).catch((error) => console.warn("Could not save settings", error));
   }, [settings]);
 
+  useEffect(() => () => {
+    persistSchedulerRef.current.cancel();
+  }, []);
+
   const avatarSrc = useMemo(() => displayAvatarSrc(settings.avatar), [settings.avatar]);
 
-  function patchSettings(patch: AppSettingsPatch) {
+  function patchSettings(patch: AppSettingsPatch, persistMode: PersistMode = "immediate") {
+    persistModeRef.current = persistMode;
     setSettings((current) => ({
       timer: { ...current.timer, ...patch.timer },
       avatar: { ...current.avatar, ...patch.avatar },

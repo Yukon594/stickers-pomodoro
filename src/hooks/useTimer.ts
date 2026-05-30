@@ -23,6 +23,10 @@ export function useTimer({ settingsRef, onTick, onComplete }: UseTimerOptions) {
 
   const [focusOverride, setFocusOverride, focusOverrideRef] = useSyncedRef<FocusOverride | null>(null);
   const lastTimerTickAtRef = useRef<number | null>(null);
+  const onTickRef = useRef(onTick);
+  const onCompleteRef = useRef(onComplete);
+  onTickRef.current = onTick;
+  onCompleteRef.current = onComplete;
 
   function currentTimerDuration(timerState: TimerState): number {
     if (timerState.phase === "countdown" && timerState.countdownRole === "focus" && focusOverrideRef.current) {
@@ -69,7 +73,7 @@ export function useTimer({ settingsRef, onTick, onComplete }: UseTimerOptions) {
           const nextSeconds = current.secondsLeft + elapsedSeconds;
           const focusDuration = Math.max(60, currentSettings.timer.focusMinutes * 60);
           const completedTrees = Math.floor(nextSeconds / focusDuration) - Math.floor(current.secondsLeft / focusDuration);
-          onTick(elapsedSeconds, completedTrees);
+          onTickRef.current(elapsedSeconds, completedTrees);
           return { ...current, secondsLeft: nextSeconds };
         }
 
@@ -77,14 +81,14 @@ export function useTimer({ settingsRef, onTick, onComplete }: UseTimerOptions) {
           const completedFocusSessions =
             current.countdownRole === "focus" ? current.completedFocusSessions + 1 : current.completedFocusSessions;
           if (current.countdownRole === "focus") {
-            onTick(current.secondsLeft, 1);
+            onTickRef.current(current.secondsLeft, 1);
           }
-          window.setTimeout(() => onComplete(completedFocusSessions, current.countdownRole), 0);
+          window.setTimeout(() => onCompleteRef.current(completedFocusSessions, current.countdownRole), 0);
           return { ...current, secondsLeft: 0, isRunning: false, isComplete: true, completedFocusSessions };
         }
 
         if (current.countdownRole === "focus") {
-          onTick(elapsedSeconds, 0);
+          onTickRef.current(elapsedSeconds, 0);
         }
         return { ...current, secondsLeft: current.secondsLeft - elapsedSeconds };
       });
@@ -99,7 +103,7 @@ export function useTimer({ settingsRef, onTick, onComplete }: UseTimerOptions) {
       document.removeEventListener("visibilitychange", applyElapsedTime);
       window.removeEventListener("focus", applyElapsedTime);
     };
-  }, [timer.isRunning, timer.countdownRole, timer.phase, onTick, onComplete, settingsRef, setTimer]);
+  }, [timer.isRunning, timer.countdownRole, timer.phase, settingsRef, setTimer]);
 
   function toggleTimer() {
     const current = timerRef.current;
