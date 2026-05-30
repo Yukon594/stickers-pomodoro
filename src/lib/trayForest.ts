@@ -1,6 +1,6 @@
 import { formatDuration, todayKey } from "./stats";
 import { durationForPhase, formatTime } from "./timer";
-import type { AppSettings, TimerState, TrayIconDebugInfo, TreeStyle } from "./types";
+import type { AppSettings, NativeTrayTimerState, TimerState, TrayIconDebugInfo, TreeStyle } from "./types";
 
 export interface TrayForestState {
   title: string;
@@ -62,6 +62,28 @@ export function buildTrayForestState(timer: TimerState, settings: AppSettings, c
   };
 }
 
+export function buildNativeTrayTimerState(
+  timer: TimerState,
+  title: string,
+  syncedAtMs: number,
+  totalSeconds: number,
+  iconFrames: number[][]
+): NativeTrayTimerState | null {
+  if (!timer.isRunning || timer.isComplete) {
+    return null;
+  }
+
+  const titleSuffix = title.includes(" · ") ? title.split(" · ").slice(1).join(" · ") : "";
+  return {
+    phase: timer.phase,
+    secondsLeft: Math.max(0, Math.floor(timer.secondsLeft)),
+    syncedAtMs: Math.max(0, Math.floor(syncedAtMs)),
+    totalSeconds: Math.max(1, Math.floor(totalSeconds)),
+    titleSuffix,
+    iconFrames
+  };
+}
+
 export function countdownStages(progress: number): number[] {
   const stage = progressStage(progress);
   return Array.from({ length: stage + 1 }, (_, index) => index);
@@ -105,7 +127,42 @@ export async function renderTrayForestIcon(
   return asset.iconBytes;
 }
 
+const trayIconSetCache = new Map<string, Promise<{ iconFrames: number[][]; debugInfos: TrayIconDebugInfo[] }>>();
+
 export async function renderTrayForestIconAsset(
+  stage: number,
+  style: TreeStyle,
+  iconVariant: TrayForestState["iconVariant"] = "tree"
+): Promise<{ iconBytes: number[]; debugInfo: TrayIconDebugInfo }> {
+  const iconSet = await renderTrayForestIconSet(style, iconVariant);
+  const safeStage = Math.max(0, Math.min(4, Math.floor(stage)));
+  return {
+    iconBytes: iconSet.iconFrames[safeStage],
+    debugInfo: iconSet.debugInfos[safeStage]
+  };
+}
+
+export async function renderTrayForestIconSet(
+  style: TreeStyle,
+  iconVariant: TrayForestState["iconVariant"] = "tree"
+): Promise<{ iconFrames: number[][]; debugInfos: TrayIconDebugInfo[] }> {
+  const cacheKey = `${style}:${iconVariant}:${window.devicePixelRatio >= 2 ? 3 : 2}`;
+  const cached = trayIconSetCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const promise = Promise.all(
+    Array.from({ length: 5 }, (_, stage) => renderSingleTrayForestIconAsset(stage, style, iconVariant))
+  ).then((assets) => ({
+    iconFrames: assets.map((asset) => asset.iconBytes),
+    debugInfos: assets.map((asset) => asset.debugInfo)
+  }));
+  trayIconSetCache.set(cacheKey, promise);
+  return promise;
+}
+
+async function renderSingleTrayForestIconAsset(
   stage: number,
   style: TreeStyle,
   iconVariant: TrayForestState["iconVariant"] = "tree"

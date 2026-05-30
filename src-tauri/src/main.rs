@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
-    env, fs, path::PathBuf, process::Command, thread, time::Duration,
+    env, fs, path::PathBuf, process::Command, sync::{Arc, Mutex}, thread, time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
     image::Image,
@@ -35,6 +35,20 @@ struct TrayIconDebugInfo {
     runtime: Option<String>,
     error: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeTrayTimerState {
+    phase: String,
+    seconds_left: u32,
+    synced_at_ms: u64,
+    total_seconds: u32,
+    title_suffix: String,
+    icon_frames: Vec<Vec<u8>>,
+}
+
+#[derive(Clone, Default)]
+struct SharedNativeTrayTimer(Arc<Mutex<Option<NativeTrayTimerState>>>);
 
 #[tauri::command]
 fn load_settings(app: AppHandle) -> Result<Value, String> {
@@ -72,6 +86,7 @@ fn update_tray_state(
     icon_bytes: Vec<u8>,
     visible: bool,
     debug_info: Option<TrayIconDebugInfo>,
+    native_timer: Option<NativeTrayTimerState>,
 ) -> Result<(), String> {
     let tray_diagnostics = tray_diagnostics_enabled();
 
@@ -87,6 +102,7 @@ fn update_tray_state(
     };
 
     if !visible {
+        set_native_tray_timer_state(&app, None);
         if tray_diagnostics {
             eprintln!("Tray icon update: hiding main tray");
         }
@@ -181,6 +197,8 @@ fn update_tray_state(
             fallback_reason.as_deref().unwrap_or("none")
         );
     }
+
+    set_native_tray_timer_state(&app, native_timer);
 
     Ok(())
 }
@@ -649,6 +667,107 @@ fn shortcut_candidates(shortcut: &str) -> Vec<String> {
     candidates
 }
 
+fn set_native_tray_timer_state(app: &AppHandle, native_timer: Option<NativeTrayTimerState>) {
+    let shared = app.state::<SharedNativeTrayTimer>().inner().0.clone();
+    let lock = shared.lock();
+    if let Ok(mut guard) = lock {
+        *guard = native_timer;
+    }
+}
+
+fn start_native_tray_timer_loop(app: AppHandle, shared: SharedNativeTrayTimer) {
+    thread::spawn(move || loop {
+        let snapshot = shared.0.lock().ok().and_then(|guard| (*guard).clone());
+        let mut rendered_any = false;
+
+        if let Some(timer) = snapshot {
+            if let Some(tray) = app.tray_by_id("main") {
+                let title = native_tray_title(&timer);
+                let stage = native_tray_stage(&timer);
+                let _ = tray.set_title(Some(title));
+                if let Some(icon_bytes) = timer.icon_frames.get(stage).filter(|bytes| !bytes.is_empty()) {
+                    if let Ok(image) = Image::from_bytes(icon_bytes) {
+                        let _ = tray.set_icon_with_as_template(Some(image), true);
+                    }
+                }
+                rendered_any = true;
+            }
+        }
+
+        if !rendered_any {
+            // No active native timer state; just wait for the next frontend sync.
+        }
+
+        thread::sleep(Duration::from_millis(250));
+    });
+}
+
+fn native_tray_title(timer: &NativeTrayTimerState) -> String {
+    let elapsed_seconds = current_unix_ms()
+        .saturating_sub(timer.synced_at_ms)
+        .checked_div(1_000)
+        .unwrap_or(0) as u32;
+    let seconds = if timer.phase == "countup" {
+        timer.seconds_left.saturating_add(elapsed_seconds)
+    } else {
+        timer.seconds_left.saturating_sub(elapsed_seconds)
+    };
+
+    let time = format_timer_label(seconds);
+    if timer.title_suffix.is_empty() {
+        time
+    } else {
+        format!("{time} · {}", timer.title_suffix)
+    }
+}
+
+fn native_tray_stage(timer: &NativeTrayTimerState) -> usize {
+    let total_seconds = timer.total_seconds.max(1);
+    let elapsed_seconds = current_unix_ms()
+        .saturating_sub(timer.synced_at_ms)
+        .checked_div(1_000)
+        .unwrap_or(0) as u32;
+
+    let progress = if timer.phase == "countup" {
+        let current = timer.seconds_left.saturating_add(elapsed_seconds);
+        let cycle_elapsed = current % total_seconds;
+        cycle_elapsed as f64 / total_seconds as f64
+    } else {
+        let remaining = timer.seconds_left.saturating_sub(elapsed_seconds);
+        1.0 - (remaining as f64 / total_seconds as f64)
+    };
+
+    progress_to_stage(progress)
+}
+
+fn progress_to_stage(progress: f64) -> usize {
+    let safe_progress = progress.clamp(0.0, 1.0);
+    if safe_progress >= 1.0 {
+        4
+    } else if safe_progress >= 0.75 {
+        3
+    } else if safe_progress >= 0.5 {
+        2
+    } else if safe_progress >= 0.25 {
+        1
+    } else {
+        0
+    }
+}
+
+fn current_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn format_timer_label(total_seconds: u32) -> String {
+    let minutes = total_seconds / 60;
+    let seconds = total_seconds % 60;
+    format!("{minutes:02}:{seconds:02}")
+}
+
 fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -725,11 +844,14 @@ fn build_main_tray(app: &AppHandle) -> tauri::Result<()> {
 
 fn main() {
     tauri::Builder::default()
+        .manage(SharedNativeTrayTimer::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            let shared = app.state::<SharedNativeTrayTimer>().inner().clone();
+            start_native_tray_timer_loop(app.handle().clone(), shared);
             if let Err(error) = build_main_tray(app.handle()) {
                 eprintln!("Could not build menu bar tray: {error}");
             }

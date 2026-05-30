@@ -38,9 +38,9 @@ import {
   recordTodoProgress, reorderTodos, treesForQuickStart, updateTodoPlan
 } from "./lib/todos";
 import {
-  TREE_STYLE_OPTIONS, buildTrayForestState,
-  drawTreePreviewSvg, renderTrayForestIconAsset
-} from "./lib/trayForest";
+    TREE_STYLE_OPTIONS, buildTrayForestState,
+    buildNativeTrayTimerState, drawTreePreviewSvg, renderTrayForestIconSet
+  } from "./lib/trayForest";
 import { playGearTick, disposeAudio } from "./lib/audio";
 import {
   useSettings,
@@ -256,16 +256,23 @@ function PomodoroApp() {
     let disposed = false;
     const retryTimers: number[] = [];
     const trayState = buildTrayForestState(timer, settings, timer.phase === "countdown" ? currentTimerDuration(timer) : null);
+    const nativeTimerTotalSeconds = timer.phase === "countup"
+      ? Math.max(60, settings.timer.focusMinutes * 60)
+      : currentTimerDuration(timer);
     if (!settings.menuBar.enabled) {
-      updateTrayState("", "", [], false).catch((error) => console.warn("Could not hide tray forest", error));
+      updateTrayState("", "", [], false, null, null).catch((error) => console.warn("Could not hide tray forest", error));
       return;
     }
-    renderTrayForestIconAsset(trayState.stage, settings.menuBar.treeStyle, trayState.iconVariant)
-      .then(({ iconBytes, debugInfo }) => {
+    renderTrayForestIconSet(settings.menuBar.treeStyle, trayState.iconVariant)
+      .then(({ iconFrames, debugInfos }) => {
+        const safeStage = Math.max(0, Math.min(4, Math.floor(trayState.stage)));
+        const iconBytes = iconFrames[safeStage];
+        const debugInfo = debugInfos[safeStage];
+        const nativeTimer = buildNativeTrayTimerState(timer, trayState.title, Date.now(), nativeTimerTotalSeconds, iconFrames);
         logTrayDiagnostic("rendered tray forest icon", debugInfo);
         const sendTrayState = () => {
           if (!disposed) {
-            updateTrayState(trayState.title, trayState.tooltip, iconBytes, true, debugInfo).catch((error) => console.warn("Could not update tray forest", error));
+            updateTrayState(trayState.title, trayState.tooltip, iconBytes, true, debugInfo, nativeTimer).catch((error) => console.warn("Could not update tray forest", error));
           }
         };
         sendTrayState();
@@ -273,7 +280,7 @@ function PomodoroApp() {
       })
       .catch((error) => {
         console.warn("Could not render tray forest icon", error);
-        updateTrayState(trayState.title, trayState.tooltip, [], true).catch(() => undefined);
+        updateTrayState(trayState.title, trayState.tooltip, [], true, null, null).catch(() => undefined);
       });
     return () => { disposed = true; retryTimers.forEach((id) => window.clearTimeout(id)); };
   }, [settings.forestStats, settings.menuBar.enabled, settings.menuBar.treeStyle, settings.timer.focusMinutes, settings.timer.restMinutes, focusOverride, timer.phase, timer.countdownRole, timer.isRunning, timer.secondsLeft, timer.isComplete, currentDateKey]);

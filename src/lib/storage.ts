@@ -6,6 +6,7 @@ import {
   type AvatarSettings,
   type BackgroundSettings,
   type CornerMode,
+  type NativeTrayTimerState,
   type ProjectItem,
   type QuickStartPreset,
   type ReminderCopyItem,
@@ -215,13 +216,14 @@ export async function updateTrayState(
   tooltip: string,
   iconBytes: number[],
   visible: boolean,
-  debugInfo: TrayIconDebugInfo | null = null
+  debugInfo: TrayIconDebugInfo | null = null,
+  nativeTimer: NativeTrayTimerState | null = null
 ): Promise<void> {
   if (!isTauriRuntime()) {
     return;
   }
 
-  await invoke("update_tray_state", { title, tooltip, iconBytes, visible, debugInfo });
+  await invoke("update_tray_state", { title, tooltip, iconBytes, visible, debugInfo, nativeTimer });
 }
 
 export async function minimizeMainWindow(): Promise<void> {

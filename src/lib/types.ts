@@ -132,6 +132,15 @@ export interface TrayIconDebugInfo {
   error?: string;
 }
 
+export interface NativeTrayTimerState {
+  phase: Phase;
+  secondsLeft: number;
+  syncedAtMs: number;
+  totalSeconds: number;
+  titleSuffix: string;
+  iconFrames: number[][];
+}
+
 export interface ProjectItem {
   id: string;
   name: string;

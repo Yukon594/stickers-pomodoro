@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { defaultSettings } from "./storage";
 import {
   TREE_STYLE_OPTIONS,
+  buildNativeTrayTimerState,
   buildTrayForestState,
   countdownStages,
   countupStages,
@@ -100,6 +101,48 @@ describe("tray forest helpers", () => {
 
     expect(state.iconVariant).toBe("tree");
     expect(state.stage).toBe(2);
+  });
+
+  it("builds a native tray timer payload while the timer is actively running", () => {
+    const timer: TimerState = {
+      phase: "countdown",
+      countdownRole: "focus",
+      secondsLeft: 149.8,
+      isRunning: true,
+      completedFocusSessions: 0,
+      isComplete: false
+    };
+
+    expect(buildNativeTrayTimerState(timer, "02:29 · 3棵", 123_456, 1_500, [[1], [2], [3], [4], [5]])).toEqual({
+      phase: "countdown",
+      secondsLeft: 149,
+      syncedAtMs: 123_456,
+      totalSeconds: 1_500,
+      titleSuffix: "3棵",
+      iconFrames: [[1], [2], [3], [4], [5]]
+    });
+  });
+
+  it("clears the native tray timer payload when the timer is paused or complete", () => {
+    const paused: TimerState = {
+      phase: "countdown",
+      countdownRole: "focus",
+      secondsLeft: 150,
+      isRunning: false,
+      completedFocusSessions: 0,
+      isComplete: false
+    };
+    const complete: TimerState = {
+      phase: "countdown",
+      countdownRole: "focus",
+      secondsLeft: 0,
+      isRunning: false,
+      completedFocusSessions: 1,
+      isComplete: true
+    };
+
+    expect(buildNativeTrayTimerState(paused, "02:30 · 3棵", 123_456, 1_500, [[1]])).toBeNull();
+    expect(buildNativeTrayTimerState(complete, "完成 · 3棵", 123_456, 1_500, [[1]])).toBeNull();
   });
 
   it("starts idle pixel trees at a larger visible stage", () => {
