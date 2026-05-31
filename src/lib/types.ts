@@ -134,10 +134,12 @@ export interface TrayIconDebugInfo {
 
 export interface NativeTrayTimerState {
   phase: Phase;
+  countdownRole: CountdownRole;
   secondsLeft: number;
   syncedAtMs: number;
   totalSeconds: number;
   titleSuffix: string;
+  sessionId: string;
   iconFrames: number[][];
 }
 
@@ -205,4 +207,5 @@ export interface TimerState {
   isRunning: boolean;
   completedFocusSessions: number;
   isComplete: boolean;
+  sessionId: string | null;
 }

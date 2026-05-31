@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useSyncedRef } from "./useSyncedRef";
 import { durationForPhase } from "../lib/timer";
+import { completeCountdownTimer, createTimerSessionId } from "../lib/timerCompletion";
 import type { AppSettings, CountdownRole, FocusOverride, Phase, TimerState } from "../lib/types";
 
 interface UseTimerOptions {
@@ -18,7 +19,8 @@ export function useTimer({ settingsRef, onTick, onComplete }: UseTimerOptions) {
     secondsLeft: durationForPhase("countdown", settingsRef.current.timer),
     isRunning: false,
     completedFocusSessions: 0,
-    isComplete: false
+    isComplete: false,
+    sessionId: null
   });
 
   const [focusOverride, setFocusOverride, focusOverrideRef] = useSyncedRef<FocusOverride | null>(null);
@@ -27,6 +29,18 @@ export function useTimer({ settingsRef, onTick, onComplete }: UseTimerOptions) {
   const onCompleteRef = useRef(onComplete);
   onTickRef.current = onTick;
   onCompleteRef.current = onComplete;
+
+  function finalizeCountdown(current: TimerState): TimerState {
+    const completion = completeCountdownTimer(current);
+    if (completion.focusSeconds > 0 || completion.treesCompleted > 0) {
+      onTickRef.current(completion.focusSeconds, completion.treesCompleted);
+    }
+    window.setTimeout(
+      () => onCompleteRef.current(completion.completedFocusSessions, completion.countdownRole),
+      0
+    );
+    return completion.nextTimer;
+  }
 
   function currentTimerDuration(timerState: TimerState): number {
     if (timerState.phase === "countdown" && timerState.countdownRole === "focus" && focusOverrideRef.current) {
@@ -78,13 +92,7 @@ export function useTimer({ settingsRef, onTick, onComplete }: UseTimerOptions) {
         }
 
         if (elapsedSeconds >= current.secondsLeft) {
-          const completedFocusSessions =
-            current.countdownRole === "focus" ? current.completedFocusSessions + 1 : current.completedFocusSessions;
-          if (current.countdownRole === "focus") {
-            onTickRef.current(current.secondsLeft, 1);
-          }
-          window.setTimeout(() => onCompleteRef.current(completedFocusSessions, current.countdownRole), 0);
-          return { ...current, secondsLeft: 0, isRunning: false, isComplete: true, completedFocusSessions };
+          return finalizeCountdown(current);
         }
 
         if (current.countdownRole === "focus") {
@@ -120,7 +128,11 @@ export function useTimer({ settingsRef, onTick, onComplete }: UseTimerOptions) {
     if (current.isComplete && current.phase === "countdown") {
       advanceCountdown(true);
     } else {
-      setTimer((cur) => ({ ...cur, isRunning: !cur.isRunning }));
+      setTimer((cur) => ({
+        ...cur,
+        isRunning: !cur.isRunning,
+        sessionId: cur.isRunning ? null : createTimerSessionId()
+      }));
     }
 
     return { wasRunning, startRole };
@@ -135,7 +147,8 @@ export function useTimer({ settingsRef, onTick, onComplete }: UseTimerOptions) {
       countdownRole: nextRole,
       secondsLeft: durationForPhase("countdown", settingsRef.current.timer, nextRole),
       isRunning: shouldRun,
-      isComplete: false
+      isComplete: false,
+      sessionId: shouldRun ? createTimerSessionId() : null
     }));
   }
 
@@ -144,7 +157,8 @@ export function useTimer({ settingsRef, onTick, onComplete }: UseTimerOptions) {
       ...current,
       secondsLeft: currentTimerDuration(current),
       isRunning: false,
-      isComplete: false
+      isComplete: false,
+      sessionId: null
     }));
   }
 
@@ -164,7 +178,8 @@ export function useTimer({ settingsRef, onTick, onComplete }: UseTimerOptions) {
       countdownRole: "focus",
       secondsLeft: durationForPhase(phase, settingsRef.current.timer, "focus"),
       isRunning: shouldRun,
-      isComplete: false
+      isComplete: false,
+      sessionId: shouldRun ? createTimerSessionId() : null
     }));
   }
 
@@ -176,7 +191,8 @@ export function useTimer({ settingsRef, onTick, onComplete }: UseTimerOptions) {
       countdownRole: "rest",
       secondsLeft: durationForPhase("countdown", settingsRef.current.timer, "rest"),
       isRunning: true,
-      isComplete: false
+      isComplete: false,
+      sessionId: createTimerSessionId()
     }));
   }
 
@@ -191,7 +207,8 @@ export function useTimer({ settingsRef, onTick, onComplete }: UseTimerOptions) {
       countdownRole: "focus",
       secondsLeft: nextOverride?.seconds ?? durationForPhase("countdown", settingsRef.current.timer, "focus"),
       isRunning: true,
-      isComplete: false
+      isComplete: false,
+      sessionId: createTimerSessionId()
     }));
   }
 
@@ -203,8 +220,24 @@ export function useTimer({ settingsRef, onTick, onComplete }: UseTimerOptions) {
       countdownRole: "focus",
       secondsLeft: seconds,
       isRunning: true,
-      isComplete: false
+      isComplete: false,
+      sessionId: createTimerSessionId()
     }));
+  }
+
+  function completeTimerFromNative(sessionId: string) {
+    setTimer((current) => {
+      if (
+        !current.isRunning ||
+        current.phase !== "countdown" ||
+        current.isComplete ||
+        current.sessionId !== sessionId
+      ) {
+        return current;
+      }
+
+      return finalizeCountdown(current);
+    });
   }
 
   return {
@@ -223,6 +256,7 @@ export function useTimer({ settingsRef, onTick, onComplete }: UseTimerOptions) {
     changePhase,
     startRestCountdown,
     startFocusCountdown,
-    startQuickStart
+    startQuickStart,
+    completeTimerFromNative
   };
 }

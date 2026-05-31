@@ -37,6 +37,7 @@ import {
   activeTodoPlannedSeconds, TIME_PRESET_MINUTES, completeTodo,
   recordTodoProgress, reorderTodos, treesForQuickStart, updateTodoPlan
 } from "./lib/todos";
+import { createDeferredUnlistenRegistry, createEventBurstGuard } from "./lib/eventGuards";
 import {
     TREE_STYLE_OPTIONS, buildTrayForestState,
     buildNativeTrayTimerState, drawTreePreviewSvg, renderTrayForestIconSet
@@ -114,6 +115,8 @@ function PomodoroApp() {
   const cardRef = useRef<HTMLElement>(null);
   const lastTimerTickAtRef = useRef<number | null>(null);
   const loadedOnce = useRef(false);
+  const trayToggleGuardRef = useRef(createEventBurstGuard(350));
+  const shortcutGuardRef = useRef(createEventBurstGuard(350));
 
   // --- Core bridge: focus progress ---
   const addFocusProgress = (focusSeconds: number, treesCompleted = 0) => {
@@ -135,7 +138,7 @@ function PomodoroApp() {
     currentTimerDuration, currentTimerDurationFromRefs,
     setFocusOverride, setTimer,
     toggleTimer: toggleTimerBase, resetTimer, skipPhase, changePhase,
-    startRestCountdown, startFocusCountdown, startQuickStart
+    startRestCountdown, startFocusCountdown, startQuickStart, completeTimerFromNative
   } = useTimer({
     settingsRef,
     onTick: (focusSeconds, treesCompleted) => {
@@ -212,18 +215,31 @@ function PomodoroApp() {
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
-    let cleanup: Array<() => void> = [];
+    const registry = createDeferredUnlistenRegistry();
     import("@tauri-apps/api/event")
       .then(async ({ listen }) => {
-        const unlistenToggle = await listen("tray-toggle", () => toggleTimer());
+        const unlistenToggle = await listen("tray-toggle", () => {
+          if (!trayToggleGuardRef.current.shouldHandle()) {
+            return;
+          }
+          toggleTimer();
+        });
         const unlistenReset = await listen("tray-reset", () => { resetTimer(); });
         const unlistenReminder = await listen<{ action: string }>("reminder-action", (event) => { handleReminderAction(event.payload.action); });
         const unlistenStats = await listen("tray-stats", () => { setStatsOpen(true); });
-        const unlistenShortcut = await listen("pomodoro-shortcut-start", () => { startPomodoroShortcut(); });
-        cleanup = [unlistenToggle, unlistenReset, unlistenReminder, unlistenStats, unlistenShortcut];
+        const unlistenNativeElapsed = await listen<{ sessionId: string }>("native-tray-timer-elapsed", (event) => {
+          completeTimerFromNative(event.payload.sessionId);
+        });
+        const unlistenShortcut = await listen("pomodoro-shortcut-start", () => {
+          if (!shortcutGuardRef.current.shouldHandle()) {
+            return;
+          }
+          startPomodoroShortcut();
+        });
+        registry.register([unlistenToggle, unlistenReset, unlistenReminder, unlistenStats, unlistenNativeElapsed, unlistenShortcut]);
       })
       .catch((error) => console.warn("Tray events unavailable", error));
-    return () => cleanup.forEach((unlisten) => unlisten());
+    return () => registry.dispose();
   }, []);
 
   useEffect(() => {
@@ -307,7 +323,7 @@ function PomodoroApp() {
     setTimer((ts: TimerState) => ({
       ...ts, phase: "countdown", countdownRole: "focus",
       secondsLeft: ts.phase === "countdown" && ts.countdownRole === "focus" && !ts.isComplete ? ts.secondsLeft : durationForPhase("countdown", settingsRef.current.timer, "focus"),
-      isRunning: true, isComplete: false
+      isRunning: true, isComplete: false, sessionId: `timer-${Date.now().toString(36)}-${Math.floor(Math.random() * 1_000_000).toString(36)}`
     }));
     announceTimerStart("shortcut", "focus");
     minimizeMainWindow().catch((error) => console.warn("Could not minimize main window", error));
@@ -461,8 +477,7 @@ function PomodoroApp() {
       activeProjectId: preset.projectId,
       activeTodoId: settings.activeTodoId && settings.todos.some(t => t.id === settings.activeTodoId && t.projectId === preset.projectId && !t.completed) ? settings.activeTodoId : null
     });
-    setFocusOverride({ seconds, presetId: preset.id, trackForest: preset.trackForest });
-    setTimer((current: TimerState) => ({ ...current, phase: "countdown", countdownRole: "focus", secondsLeft: seconds, isRunning: true, isComplete: false }));
+    startQuickStart(seconds, preset.id, preset.trackForest);
     setTodayOpen(false); setProjectMenuOpen(false);
     announceTimerStart("button", "focus");
     minimizeMainWindow().catch(() => undefined);

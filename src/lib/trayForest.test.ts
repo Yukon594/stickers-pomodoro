@@ -39,7 +39,8 @@ describe("tray forest helpers", () => {
       secondsLeft: 0,
       isRunning: false,
       completedFocusSessions: 1,
-      isComplete: true
+      isComplete: true,
+      sessionId: null
     };
 
     const state = buildTrayForestState(timer, {
@@ -63,7 +64,8 @@ describe("tray forest helpers", () => {
       secondsLeft: 90,
       isRunning: true,
       completedFocusSessions: 1,
-      isComplete: false
+      isComplete: false,
+      sessionId: "rest-run-1"
     };
 
     const state = buildTrayForestState(timer, defaultSettings);
@@ -78,7 +80,8 @@ describe("tray forest helpers", () => {
       secondsLeft: defaultSettings.timer.focusMinutes * 60,
       isRunning: false,
       completedFocusSessions: 0,
-      isComplete: false
+      isComplete: false,
+      sessionId: null
     };
 
     const state = buildTrayForestState(timer, defaultSettings);
@@ -94,7 +97,8 @@ describe("tray forest helpers", () => {
       secondsLeft: 150,
       isRunning: true,
       completedFocusSessions: 0,
-      isComplete: false
+      isComplete: false,
+      sessionId: "focus-run-1"
     };
 
     const state = buildTrayForestState(timer, defaultSettings, 300);
@@ -110,15 +114,18 @@ describe("tray forest helpers", () => {
       secondsLeft: 149.8,
       isRunning: true,
       completedFocusSessions: 0,
-      isComplete: false
+      isComplete: false,
+      sessionId: "focus-run-1"
     };
 
     expect(buildNativeTrayTimerState(timer, "02:29 · 3棵", 123_456, 1_500, [[1], [2], [3], [4], [5]])).toEqual({
       phase: "countdown",
+      countdownRole: "focus",
       secondsLeft: 149,
       syncedAtMs: 123_456,
       totalSeconds: 1_500,
       titleSuffix: "3棵",
+      sessionId: "focus-run-1",
       iconFrames: [[1], [2], [3], [4], [5]]
     });
   });
@@ -130,7 +137,8 @@ describe("tray forest helpers", () => {
       secondsLeft: 150,
       isRunning: false,
       completedFocusSessions: 0,
-      isComplete: false
+      isComplete: false,
+      sessionId: null
     };
     const complete: TimerState = {
       phase: "countdown",
@@ -138,7 +146,8 @@ describe("tray forest helpers", () => {
       secondsLeft: 0,
       isRunning: false,
       completedFocusSessions: 1,
-      isComplete: true
+      isComplete: true,
+      sessionId: null
     };
 
     expect(buildNativeTrayTimerState(paused, "02:30 · 3棵", 123_456, 1_500, [[1]])).toBeNull();
@@ -152,7 +161,8 @@ describe("tray forest helpers", () => {
       secondsLeft: defaultSettings.timer.focusMinutes * 60,
       isRunning: false,
       completedFocusSessions: 0,
-      isComplete: false
+      isComplete: false,
+      sessionId: null
     };
 
     const state = buildTrayForestState(timer, {

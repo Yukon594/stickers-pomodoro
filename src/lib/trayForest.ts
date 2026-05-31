@@ -69,17 +69,19 @@ export function buildNativeTrayTimerState(
   totalSeconds: number,
   iconFrames: number[][]
 ): NativeTrayTimerState | null {
-  if (!timer.isRunning || timer.isComplete) {
+  if (!timer.isRunning || timer.isComplete || !timer.sessionId) {
     return null;
   }
 
   const titleSuffix = title.includes(" · ") ? title.split(" · ").slice(1).join(" · ") : "";
   return {
     phase: timer.phase,
+    countdownRole: timer.countdownRole,
     secondsLeft: Math.max(0, Math.floor(timer.secondsLeft)),
     syncedAtMs: Math.max(0, Math.floor(syncedAtMs)),
     totalSeconds: Math.max(1, Math.floor(totalSeconds)),
     titleSuffix,
+    sessionId: timer.sessionId,
     iconFrames
   };
 }

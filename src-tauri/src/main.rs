@@ -40,15 +40,23 @@ struct TrayIconDebugInfo {
 #[serde(rename_all = "camelCase")]
 struct NativeTrayTimerState {
     phase: String,
+    countdown_role: String,
     seconds_left: u32,
     synced_at_ms: u64,
     total_seconds: u32,
     title_suffix: String,
+    session_id: String,
     icon_frames: Vec<Vec<u8>>,
 }
 
 #[derive(Clone, Default)]
 struct SharedNativeTrayTimer(Arc<Mutex<Option<NativeTrayTimerState>>>);
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeTrayTimerElapsedPayload {
+    session_id: String,
+}
 
 #[tauri::command]
 fn load_settings(app: AppHandle) -> Result<Value, String> {
@@ -676,29 +684,49 @@ fn set_native_tray_timer_state(app: &AppHandle, native_timer: Option<NativeTrayT
 }
 
 fn start_native_tray_timer_loop(app: AppHandle, shared: SharedNativeTrayTimer) {
-    thread::spawn(move || loop {
-        let snapshot = shared.0.lock().ok().and_then(|guard| (*guard).clone());
-        let mut rendered_any = false;
+    thread::spawn(move || {
+        let mut last_elapsed_session_id = None::<String>;
 
-        if let Some(timer) = snapshot {
-            if let Some(tray) = app.tray_by_id("main") {
-                let title = native_tray_title(&timer);
-                let stage = native_tray_stage(&timer);
-                let _ = tray.set_title(Some(title));
-                if let Some(icon_bytes) = timer.icon_frames.get(stage).filter(|bytes| !bytes.is_empty()) {
-                    if let Ok(image) = Image::from_bytes(icon_bytes) {
-                        let _ = tray.set_icon_with_as_template(Some(image), true);
+        loop {
+            let snapshot = shared.0.lock().ok().and_then(|guard| (*guard).clone());
+            let mut rendered_any = false;
+
+            if let Some(timer) = snapshot {
+                if let Some(tray) = app.tray_by_id("main") {
+                    let title = native_tray_title(&timer);
+                    let stage = native_tray_stage(&timer);
+                    let _ = tray.set_title(Some(title));
+                    if let Some(icon_bytes) = timer.icon_frames.get(stage).filter(|bytes| !bytes.is_empty()) {
+                        if let Ok(image) = Image::from_bytes(icon_bytes) {
+                            let _ = tray.set_icon_with_as_template(Some(image), true);
+                        }
+                    }
+                    rendered_any = true;
+                }
+
+                if timer.phase == "countdown" && native_tray_has_elapsed(&timer) {
+                    if last_elapsed_session_id.as_deref() != Some(timer.session_id.as_str()) {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.emit(
+                                "native-tray-timer-elapsed",
+                                NativeTrayTimerElapsedPayload {
+                                    session_id: timer.session_id.clone(),
+                                },
+                            );
+                        }
+                        last_elapsed_session_id = Some(timer.session_id.clone());
                     }
                 }
-                rendered_any = true;
+            } else {
+                last_elapsed_session_id = None;
             }
-        }
 
-        if !rendered_any {
-            // No active native timer state; just wait for the next frontend sync.
-        }
+            if !rendered_any {
+                // No active native timer state; just wait for the next frontend sync.
+            }
 
-        thread::sleep(Duration::from_millis(250));
+            thread::sleep(Duration::from_millis(250));
+        }
     });
 }
 
@@ -738,6 +766,19 @@ fn native_tray_stage(timer: &NativeTrayTimerState) -> usize {
     };
 
     progress_to_stage(progress)
+}
+
+fn native_tray_has_elapsed(timer: &NativeTrayTimerState) -> bool {
+    if timer.phase != "countdown" {
+        return false;
+    }
+
+    let elapsed_seconds = current_unix_ms()
+        .saturating_sub(timer.synced_at_ms)
+        .checked_div(1_000)
+        .unwrap_or(0) as u32;
+
+    elapsed_seconds >= timer.seconds_left
 }
 
 fn progress_to_stage(progress: f64) -> usize {
